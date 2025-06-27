@@ -13,7 +13,9 @@ GIF = 1
 load_dotenv("API_KEYS.env")
 
 
-bot = telebot.TeleBot(os.getenv("TG_ID"))
+state_storage = StateMemoryStorage()
+bot = telebot.TeleBot(os.getenv("TG_ID"), state_storage=state_storage)
+
 
 class UserStates(StatesGroup):
     roulette_name = State()
@@ -48,32 +50,47 @@ def handle_promt(message):
 
 @bot.message_handler(commands=["search"])
 def search_roulettes(message):
-    bot.send_message(message.chat.id, "Привет! Как тебя зовут?")
+    bot.send_message(message.chat.id, "Enter roulette name")
     bot.set_state(message.from_user.id, UserStates.roulette_name, message.chat.id)
+
+@bot.message_handler(state=UserStates.roulette_name)
+def get_name(message):
+    with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
+        data['name'] = message.text
+    
+    bot.send_message(message.chat.id, f"How many roulettes to search?")
+    bot.set_state(message.from_user.id, UserStates.roulette_num, message.chat.id)
+
+@bot.message_handler(state=UserStates.roulette_num)
+def get_age(message):
+    try:
+        num = int(message.text)
+    except ValueError:
+        bot.send_message(message.chat.id, "Please enter a valid number")
+        return
+
+    with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
+        name = data['name']
+    
     response = requests.post("https://faproulette.co/api/getRoulettes",
                              data={
                                "roulettes_page" : "home",
                                "part" : 0,
                                "order" : "trending",
-                               "name" : UserStates.roulette_name
+                               "name" : name
                                })
+    
     raw_data = json.loads(response.text)
     roulettes = json.loads(raw_data["rouletteData"])
     counted_roulettes = []
-    for i in range(UserStates.roulette_num):
+
+    for i in range(num):
         counted_roulettes.append(roulettes[i])
+    print(counted_roulettes)
     bot.delete_state(message.from_user.id, message.chat.id)
-    bot.send_message(message.chat.id, counted_roulettes)
+    bot.send_message(message.chat.id, str(counted_roulettes))
 
-@bot.message_handler(state=UserStates.roulette_name)
-def get_name(message):
-    bot.send_message(message.chat.id, f"Приятно познакомиться, {message.text}! Сколько тебе лет?")
-    bot.set_state(message.from_user.id, UserStates.roulette_num, message.chat.id)
-
-@bot.message_handler(state=UserStates.roulette_num)
-def get_age(message):
-    bot.send_message(message.chat.id, f"Тебе {message.text} лет? Круто!")
 
 #print(search_roulettes("anal"))
-
+bot.add_custom_filter(telebot.custom_filters.StateFilter(bot))
 bot.polling(non_stop=True, interval=0)
