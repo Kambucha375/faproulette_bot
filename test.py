@@ -5,6 +5,8 @@ import os
 from dotenv import load_dotenv
 from telebot.handler_backends import State, StatesGroup
 from telebot.storage import StateMemoryStorage
+from io import BytesIO
+from PIL import Image
 
 
 JPG = 0
@@ -36,7 +38,24 @@ def get_random_roulette():
     #print(roulette_data)
     return roulette_data
 
+def get_valid_image(url):
+    response = requests.get(url)
+    if response.status_code != 200:
+        return None
+    
+    image = Image.open(BytesIO(response.content)).convert("RGB")
+    w, h = image.size
+    ratio = h/w
 
+    
+    if h > 5000:
+        image = image.resize((int(5000/ratio), 5000))
+
+    out = BytesIO()
+    out.name = "photo.jpg"
+    image.save(out, format="JPEG")
+    out.seek(0)
+    return out
 
 print('~'*50)
 
@@ -46,7 +65,7 @@ get_random_roulette()
 def handle_promt(message):
     roulette = get_random_roulette()
     current_user_id = message.chat.id
-    bot.send_photo(current_user_id, roulette["image_url"], caption=roulette["name"])
+    bot.send_photo(current_user_id, "photos/roulette.jpg", caption=roulette["name"])
 
 @bot.message_handler(commands=["search"])
 def search_roulettes(message):
@@ -62,7 +81,7 @@ def get_name(message):
     bot.set_state(message.from_user.id, UserStates.roulette_num, message.chat.id)
 
 @bot.message_handler(state=UserStates.roulette_num)
-def get_age(message):
+def get_roulette_num(message):
     try:
         num = int(message.text)
     except ValueError:
@@ -85,7 +104,11 @@ def get_age(message):
     counted_roulettes = []
 
     for i in range(num):
-        counted_roulettes.append(roulettes[i])
+        roulette = roulettes[i]
+        print(roulette)
+        img_data = get_valid_image(f"https://files.faproulette.co/images/fap/{roulette[0]}.jpg")
+        bot.send_photo(message.chat.id, img_data, roulette[1]) #roulette[1] is a name
+        counted_roulettes.append(roulette)
     print(counted_roulettes)
     bot.delete_state(message.from_user.id, message.chat.id)
     bot.send_message(message.chat.id, str(counted_roulettes))
