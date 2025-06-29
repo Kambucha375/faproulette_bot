@@ -7,6 +7,7 @@ from telebot.handler_backends import State, StatesGroup
 from telebot.storage import StateMemoryStorage
 from io import BytesIO
 from PIL import Image
+from telebot.types import InputFile
 
 
 JPG = 0
@@ -39,6 +40,7 @@ def get_random_roulette():
     return roulette_data
 
 def get_valid_image(url):
+    is_pdf = False
     response = requests.get(url)
     if response.status_code != 200:
         return None
@@ -47,15 +49,17 @@ def get_valid_image(url):
     w, h = image.size
     ratio = h/w
 
-    
-    if h > 5000:
-        image = image.resize((int(5000/ratio), 5000))
-
     out = BytesIO()
     out.name = "photo.jpg"
-    image.save(out, format="JPEG")
+
+    if h+w >= 10000 or ratio >= 20:
+        image.save(out, format="PDF")
+        is_pdf = True
+    else:
+        image.save(out, format="JPEG")
+    
     out.seek(0)
-    return out
+    return out, is_pdf
 
 print('~'*50)
 
@@ -82,13 +86,14 @@ def get_name(message):
 
 @bot.message_handler(state=UserStates.roulette_num)
 def get_roulette_num(message):
+    current_chat_id = message.chat.id
     try:
         num = int(message.text)
     except ValueError:
-        bot.send_message(message.chat.id, "Please enter a valid number")
+        bot.send_message(current_chat_id, "Please enter a valid number")
         return
 
-    with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
+    with bot.retrieve_data(message.from_user.id, current_chat_id) as data:
         name = data['name']
     
     response = requests.post("https://faproulette.co/api/getRoulettes",
@@ -106,9 +111,15 @@ def get_roulette_num(message):
     for i in range(num):
         roulette = roulettes[i]
         print(roulette)
-        img_data = get_valid_image(f"https://files.faproulette.co/images/fap/{roulette[0]}.jpg")
-        bot.send_photo(message.chat.id, img_data, roulette[1]) #roulette[1] is a name
+        img_data, is_pdf = get_valid_image(f"https://files.faproulette.co/images/fap/{roulette[0]}.jpg")
+        if is_pdf:
+            bot.send_message(current_chat_id, "Image is too large for telegram, it will be sent as pdf")
+            file = InputFile(img_data, file_name="roulette.pdf")
+            bot.send_document(chat_id=current_chat_id, document=file, caption=roulette[1]) #roulette[1] is a name
+        else:
+            bot.send_photo(current_chat_id, img_data, roulette[1]) #roulette[1] is a name
         counted_roulettes.append(roulette)
+
     print(counted_roulettes)
     bot.delete_state(message.from_user.id, message.chat.id)
     bot.send_message(message.chat.id, str(counted_roulettes))
