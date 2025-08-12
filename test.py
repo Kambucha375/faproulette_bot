@@ -39,11 +39,8 @@ def get_random_roulette():
     #print(roulette_data)
     return roulette_data
 
-def get_valid_image(url):
+def get_valid_image(response):
     is_pdf = False
-    response = requests.get(url)
-    if response.status_code != 200:
-        return None
     
     image = Image.open(BytesIO(response.content)).convert("RGB")
     w, h = image.size
@@ -65,11 +62,17 @@ print('~'*50)
 
 get_random_roulette()
 
+@bot.message_handler(commands=["start", "menu"])
+def handle_promt(message):
+    roulette = get_random_roulette()
+    current_user_id = message.chat.id
+    bot.send_photo(current_user_id, open("photos/roulette.jpg", "rb"), caption=roulette["name"])
+
 @bot.message_handler(commands=["random"])
 def handle_promt(message):
     roulette = get_random_roulette()
     current_user_id = message.chat.id
-    bot.send_photo(current_user_id, "photos/roulette.jpg", caption=roulette["name"])
+    bot.send_photo(current_user_id, open("photos/roulette.jpg", "rb"), caption=roulette["name"])
 
 @bot.message_handler(commands=["search"])
 def search_roulettes(message):
@@ -104,14 +107,18 @@ def get_roulette_num(message):
                                "name" : name
                                })
     
-    raw_data = json.loads(response.text)
-    roulettes = json.loads(raw_data["rouletteData"])
+    roulettes = json.loads(response.text)
+    if type(roulettes) != list:
+        print(type(roulettes))
+        roulettes = json.loads(roulettes["rouletteData"])
     counted_roulettes = []
 
     for i in range(num):
         roulette = roulettes[i]
-        print(roulette)
-        img_data, is_pdf = get_valid_image(f"https://files.faproulette.co/images/fap/{roulette[0]}.jpg")
+        response = requests.get(f"https://files.faproulette.co/images/fap/{roulette[0]}.jpg")
+        if response.status_code != 200:
+            response = requests.get(f"https://files.faproulette.co/images/fap/{roulette[5]}.png")
+        img_data, is_pdf = get_valid_image(response)
         if is_pdf:
             bot.send_message(current_chat_id, "Image is too large for telegram, it will be sent as pdf")
             file = InputFile(img_data, file_name="roulette.pdf")
