@@ -7,7 +7,7 @@ from telebot.handler_backends import State, StatesGroup
 from telebot.storage import StateMemoryStorage
 from io import BytesIO
 from PIL import Image
-from telebot.types import InputFile
+from telebot import types
 
 
 JPG = 0
@@ -64,9 +64,8 @@ get_random_roulette()
 
 @bot.message_handler(commands=["start", "menu"])
 def handle_promt(message):
-    roulette = get_random_roulette()
-    current_user_id = message.chat.id
-    bot.send_photo(current_user_id, open("photos/roulette.jpg", "rb"), caption=roulette["name"])
+    pass
+    
 
 @bot.message_handler(commands=["random"])
 def handle_promt(message):
@@ -75,12 +74,12 @@ def handle_promt(message):
     bot.send_photo(current_user_id, open("photos/roulette.jpg", "rb"), caption=roulette["name"])
 
 @bot.message_handler(commands=["search"])
-def search_roulettes(message):
+def get_namesearch_roulettes(message):
     bot.send_message(message.chat.id, "Enter roulette name")
     bot.set_state(message.from_user.id, UserStates.roulette_name, message.chat.id)
 
 @bot.message_handler(state=UserStates.roulette_name)
-def get_name(message):
+def get_roulette_num(message):
     with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
         data['name'] = message.text
     
@@ -88,7 +87,7 @@ def get_name(message):
     bot.set_state(message.from_user.id, UserStates.roulette_num, message.chat.id)
 
 @bot.message_handler(state=UserStates.roulette_num)
-def get_roulette_num(message):
+def search_roulettes(message):
     current_chat_id = message.chat.id
     try:
         num = int(message.text)
@@ -121,7 +120,7 @@ def get_roulette_num(message):
         img_data, is_pdf = get_valid_image(response)
         if is_pdf:
             bot.send_message(current_chat_id, "Image is too large for telegram, it will be sent as pdf")
-            file = InputFile(img_data, file_name="roulette.pdf")
+            file = types.InputFile(img_data, file_name="roulette.pdf")
             bot.send_document(chat_id=current_chat_id, document=file, caption=roulette[1]) #roulette[1] is a name
         else:
             bot.send_photo(current_chat_id, img_data, roulette[1]) #roulette[1] is a name
