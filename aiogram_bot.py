@@ -10,6 +10,8 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import FSInputFile, URLInputFile
+from aiogram.exceptions import TelegramNetworkError
 
 from dotenv import load_dotenv
 
@@ -76,6 +78,18 @@ def get_valid_image(response_bytes):
     out.seek(0)
     return out, is_pdf
 
+async def safe_send_photo(chat_id, file, caption=None, retries=3):
+    for i in range(retries):
+        try:
+            await bot.send_photo(chat_id, file, caption=caption)
+            break
+        except TelegramNetworkError:
+            if i < retries - 1:
+                print(f"retrie {i}")
+                await asyncio.sleep(2)
+            else:
+                bot.send_message(chat_id, "Failed to send photo")
+                raise
 
 async def cmd_start(message: types.Message):
     await message.answer("Avalible commands /random, /search")
@@ -83,19 +97,19 @@ async def cmd_start(message: types.Message):
 
 async def cmd_random(message: types.Message):
     roulette_data, filename = await get_random_roulette()
-    with open(filename, "rb") as photo:
-        await bot.send_photo(message.chat.id, photo, caption=roulette_data["name"])
+    photo = FSInputFile(filename)
+    await bot.send_photo(message.chat.id, photo, caption=roulette_data["name"])
 
 
-async def cmd_search(message: types.Message):
+async def cmd_search(message: types.Message, state: FSMContext):
     await message.answer("Enter filter name:")
-    await UserStates.roulette_name.set()
+    await state.set_state(UserStates.roulette_name)
 
 
 async def process_roulette_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
     await message.answer("Enter roulettes num")
-    await UserStates.roulette_num.set()
+    await state.set_state(UserStates.roulette_num)
 
 
 async def process_roulette_num(message: types.Message, state: FSMContext):
@@ -118,9 +132,13 @@ async def process_roulette_num(message: types.Message, state: FSMContext):
         text = await resp.text()
         roulettes = json.loads(text)
 
-        if not isinstance(roulettes, list):
-            roulettes = json.loads(roulettes.get("rouletteData", "[]"))
-
+        if isinstance(roulettes, dict):
+            roulette_data = roulettes.get("rouletteData", [])
+            if isinstance(roulette_data, str):
+                roulettes = json.loads(roulette_data)
+            elif isinstance(roulette_data, list):
+                roulettes = roulette_data
+    #print(roulettes)
     counted_roulettes = []
 
     for i in range(min(num, len(roulettes))):
@@ -137,16 +155,25 @@ async def process_roulette_num(message: types.Message, state: FSMContext):
 
         img_data, is_pdf = get_valid_image(img_bytes)
 
+        os.makedirs("roulettes", exist_ok=True)
+
         if is_pdf:
             await message.answer("The image is too big for telegram, will be sent as pdf")
-            file = types.InputFile(img_data, filename="roulette.pdf")
+            file_path = "roulettes/roulette.pdf"
+            with open(file_path, "wb") as f:
+                f.write(img_data.getbuffer())
+            file = FSInputFile(file_path)
             await bot.send_document(message.chat.id, document=file, caption=roulette[1])
         else:
-            await bot.send_photo(message.chat.id, img_data, caption=roulette[1])
+            file_path = "roulettes/roulette.jpg"
+            with open(file_path, "wb") as f:
+                f.write(img_data.getbuffer())
+            file = FSInputFile(file_path)
+            await safe_send_photo(message.chat.id, file, caption=roulette[1])
 
         counted_roulettes.append(roulette)
 
-    await state.finish()
+    await state.clear()
     await message.answer(str(counted_roulettes))
 
 router.message.register(cmd_start, Command(commands=["start", "menu"]))
@@ -158,6 +185,7 @@ router.message.register(process_roulette_num, StateFilter(UserStates.roulette_nu
 dp.include_router(router)
 
 async def main():
+    print("~"*40)
     await init_session()
 
     await dp.start_polling(bot, skip_updates=True)
