@@ -2,6 +2,7 @@ import os
 import json
 from io import BytesIO
 from PIL import Image
+from enum import Enum
 
 import asyncio
 import aiohttp
@@ -10,10 +11,11 @@ from aiogram.filters import Command, StateFilter
 from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import FSInputFile, URLInputFile
+from aiogram.types import FSInputFile, URLInputFile, CallbackQuery
 from aiogram.exceptions import TelegramNetworkError
 
 from dotenv import load_dotenv
+from keyboards import keyboards, Commands, CommandCallback
 
 load_dotenv("API_KEYS.env")
 
@@ -28,6 +30,7 @@ dp = Dispatcher(storage=storage)
 router = Router()
 
 session: aiohttp.ClientSession
+
 
 class UserStates(StatesGroup):
     roulette_name = State()
@@ -92,7 +95,7 @@ async def safe_send_photo(chat_id, file, caption=None, retries=3):
                 raise
 
 async def cmd_start(message: types.Message):
-    await message.answer("Avalible commands /random, /search")
+    await message.answer("Avalible commands /random, /search", reply_markup=keyboards["start_keyboard"])
 
 
 async def cmd_random(message: types.Message):
@@ -155,17 +158,17 @@ async def process_roulette_num(message: types.Message, state: FSMContext):
 
         img_data, is_pdf = get_valid_image(img_bytes)
 
-        os.makedirs("roulettes", exist_ok=True)
+        os.makedirs("photos", exist_ok=True)
 
         if is_pdf:
             await message.answer("The image is too big for telegram, will be sent as pdf")
-            file_path = "roulettes/roulette.pdf"
+            file_path = "photos/roulette.pdf"
             with open(file_path, "wb") as f:
                 f.write(img_data.getbuffer())
             file = FSInputFile(file_path)
             await bot.send_document(message.chat.id, document=file, caption=roulette[1])
         else:
-            file_path = "roulettes/roulette.jpg"
+            file_path = "photos/roulette.jpg"
             with open(file_path, "wb") as f:
                 f.write(img_data.getbuffer())
             file = FSInputFile(file_path)
@@ -176,11 +179,28 @@ async def process_roulette_num(message: types.Message, state: FSMContext):
     await state.clear()
     await message.answer(str(counted_roulettes))
 
-router.message.register(cmd_start, Command(commands=["start", "menu"]))
-router.message.register(cmd_random, Command("random"))
-router.message.register(cmd_search, Command("search"))
+
+async def get_command_function(command: Commands, message: types.Message, state: FSMContext):
+    if command == Commands.menu:
+        return await cmd_start(message)
+    elif command == Commands.random:
+        return await cmd_random(message)
+    elif command == Commands.search:
+        return await cmd_search(message, state)
+
+@router.callback_query(CommandCallback.filter())
+async def raise_command(query: CallbackQuery, callback_data: CommandCallback, state: FSMContext):
+    await get_command_function(callback_data.command, query.message, state)
+
+
+
+router.message.register(cmd_start, Command(commands=[Commands.start, Commands.menu]))
+router.message.register(cmd_random, Command(Commands.random))
+router.message.register(cmd_search, Command(Commands.search))
 router.message.register(process_roulette_name, StateFilter(UserStates.roulette_name))
 router.message.register(process_roulette_num, StateFilter(UserStates.roulette_num))
+
+
 
 dp.include_router(router)
 
