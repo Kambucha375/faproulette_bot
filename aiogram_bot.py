@@ -143,7 +143,7 @@ async def process_roulette_num(message: types.Message, state: FSMContext):
 
     for i in range(min(num, len(roulettes))):
         roulette = roulettes[i]
-        img_url_jpg = f"https://files.faproulette.co/images/fap/{roulette[0]}.jpg"
+        img_url_jpg = f"https://files.faproulette.co/images/fap/{roulette[5]}.jpg"
         img_url_png = f"https://files.faproulette.co/images/fap/{roulette[5]}.png"
 
         async with session.get(img_url_jpg) as img_resp:

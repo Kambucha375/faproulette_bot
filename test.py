@@ -114,7 +114,7 @@ def search_roulettes(message):
 
     for i in range(num):
         roulette = roulettes[i]
-        response = requests.get(f"https://files.faproulette.co/images/fap/{roulette[0]}.jpg")
+        response = requests.get(f"https://files.faproulette.co/images/fap/{roulette[5]}.jpg")
         if response.status_code != 200:
             response = requests.get(f"https://files.faproulette.co/images/fap/{roulette[5]}.png")
         img_data, is_pdf = get_valid_image(response)
