@@ -11,6 +11,10 @@ class Commands(str, Enum):
 class CommandCallback(CallbackData, prefix="com"):
     command: Commands
 
+class NumberCallback(CallbackData, prefix="num"):
+    target: str
+    num: int
+
 
 start_keyboard = InlineKeyboardMarkup(
     inline_keyboard=[
@@ -21,5 +25,16 @@ start_keyboard = InlineKeyboardMarkup(
     ]
 )
 
-keyboards = {"start_keyboard" : start_keyboard
+search_num_keyboard = InlineKeyboardMarkup(
+    inline_keyboard=[
+        [InlineKeyboardButton(text="1", callback_data=NumberCallback(target=Commands.search, num=1).pack()),
+         InlineKeyboardButton(text="3", callback_data=NumberCallback(target=Commands.search, num=3).pack()),
+         InlineKeyboardButton(text="5", callback_data=NumberCallback(target=Commands.search, num=5).pack()),
+         InlineKeyboardButton(text="10", callback_data=NumberCallback(target=Commands.search, num=10).pack())
+         ]
+    ]
+)
+
+keyboards = {"start_keyboard" : start_keyboard,
+             "search_num_keyboard" : search_num_keyboard,
              }

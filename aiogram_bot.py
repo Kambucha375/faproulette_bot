@@ -15,7 +15,7 @@ from aiogram.types import FSInputFile, URLInputFile, CallbackQuery
 from aiogram.exceptions import TelegramNetworkError
 
 from dotenv import load_dotenv
-from keyboards import keyboards, Commands, CommandCallback
+from keyboards import keyboards, Commands, CommandCallback, NumberCallback
 
 load_dotenv("API_KEYS.env")
 
@@ -111,13 +111,14 @@ async def cmd_search(message: types.Message, state: FSMContext):
 
 async def process_roulette_name(message: types.Message, state: FSMContext):
     await state.update_data(name=message.text)
-    await message.answer("Enter roulettes num")
     await state.set_state(UserStates.roulette_num)
+    await message.answer("Enter roulettes num", reply_markup=keyboards["search_num_keyboard"])
 
 
 async def process_roulette_num(message: types.Message, state: FSMContext):
+    data = await state.get_data()
     try:
-        num = int(message.text)
+        num = int(data["num"])
     except ValueError:
         await message.answer("Please, enter a valid number")
         return
@@ -188,11 +189,20 @@ async def get_command_function(command: Commands, message: types.Message, state:
     elif command == Commands.search:
         return await cmd_search(message, state)
 
+@router.callback_query(NumberCallback.filter())
+async def process_number(query: CallbackQuery, callback_data: NumberCallback, state: FSMContext):
+    if callback_data.target == Commands.search:
+        await state.update_data(num=callback_data.num)
+        data = await state.get_data()
+        print(data["num"])
+        await process_roulette_num(query.message, state)
+    
+
 @router.callback_query(CommandCallback.filter())
 async def raise_command(query: CallbackQuery, callback_data: CommandCallback, state: FSMContext):
     await get_command_function(callback_data.command, query.message, state)
-
-
+    
+    
 
 router.message.register(cmd_start, Command(commands=[Commands.start, Commands.menu]))
 router.message.register(cmd_random, Command(Commands.random))
