@@ -23,6 +23,15 @@ API_TOKEN = os.getenv("TG_ID")
 
 JPG = 0
 GIF = 1
+PNG = 2
+WEBP = 3
+
+ext_map = {
+    JPG: "jpg",
+    GIF: "gif",
+    PNG: "png",
+    WEBP: "webp"
+}
 
 bot = Bot(token=API_TOKEN)
 storage = MemoryStorage()
@@ -55,7 +64,7 @@ async def get_random_roulette():
         async with session.get(img_url) as img_resp:
             img_bytes = await img_resp.read()
 
-    filename = "photos/roulette.jpg" if image_type == JPG else "photos/roulette.gif"
+    filename = f"photos/roulette.{ext_map.get(image_type)}"
     os.makedirs("photos", exist_ok=True)
     with open(filename, "wb") as f:
         f.write(img_bytes)
@@ -63,23 +72,24 @@ async def get_random_roulette():
     return roulette_data, filename
 
 
-def get_valid_image(response_bytes):
+def get_valid_image(response_bytes, file_path):
     is_pdf = False
+
+    os.makedirs("photos", exist_ok=True)
+
     image = Image.open(BytesIO(response_bytes)).convert("RGB")
     w, h = image.size
     ratio = h / w
 
-    out = BytesIO()
-    out.name = "photo.jpg"
-
-    if h + w >= 10000 or ratio >= 20:
-        image.save(out, format="PDF")
+    if h + w >= 10000 or ratio >= 15:
+        with open("photos/roulette.pdf", "wb") as f:
+            f.write(response_bytes)
         is_pdf = True
     else:
-        image.save(out, format="JPEG")
+        with open(file_path, "wb") as f:
+            f.write(response_bytes)
 
-    out.seek(0)
-    return out, is_pdf
+    return is_pdf
 
 async def safe_send_photo(chat_id, file, caption=None, retries=3):
     for i in range(retries):
@@ -100,8 +110,11 @@ async def cmd_start(message: types.Message):
 
 async def cmd_random(message: types.Message):
     roulette_data, filename = await get_random_roulette()
-    photo = FSInputFile(filename)
-    await bot.send_photo(message.chat.id, photo, caption=roulette_data["name"])
+    file = FSInputFile(filename)
+    if roulette_data["image_type"] == GIF:
+        await bot.send_animation(message.chat.id, file, caption=roulette_data["name"])
+    else:
+        await safe_send_photo(message.chat.id, file, caption=roulette_data["name"])
 
 
 async def cmd_search(message: types.Message, state: FSMContext):
@@ -149,6 +162,8 @@ async def process_roulette_num(message: types.Message, state: FSMContext):
         roulette = roulettes[i]
         img_url_jpg = f"https://files.faproulette.co/images/fap/{roulette[5]}.jpg"
         img_url_png = f"https://files.faproulette.co/images/fap/{roulette[5]}.png"
+        file_type = roulette[6]
+        file_path = f"photos/roulette.{ext_map.get(file_type)}"
 
         async with session.get(img_url_jpg) as img_resp:
             if img_resp.status == 200:
@@ -157,23 +172,18 @@ async def process_roulette_num(message: types.Message, state: FSMContext):
                 async with session.get(img_url_png) as img_resp2:
                     img_bytes = await img_resp2.read()
 
-        img_data, is_pdf = get_valid_image(img_bytes)
-
-        os.makedirs("photos", exist_ok=True)
+        is_pdf = get_valid_image(img_bytes, file_path)
 
         if is_pdf:
             await message.answer("The image is too big for telegram, will be sent as pdf")
-            file_path = "photos/roulette.pdf"
-            with open(file_path, "wb") as f:
-                f.write(img_data.getbuffer())
             file = FSInputFile(file_path)
             await bot.send_document(message.chat.id, document=file, caption=roulette[1])
         else:
-            file_path = "photos/roulette.jpg"
-            with open(file_path, "wb") as f:
-                f.write(img_data.getbuffer())
             file = FSInputFile(file_path)
-            await safe_send_photo(message.chat.id, file, caption=roulette[1])
+            if file_type == GIF:
+                await bot.send_animation(message.chat.id, file, caption=roulette[1])
+            else:
+                await safe_send_photo(message.chat.id, file, caption=roulette[1])
 
         counted_roulettes.append(roulette)
 
