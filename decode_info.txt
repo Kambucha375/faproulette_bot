@@ -1,16 +1,16 @@
 https://faproulette.co/api/getRoulettes
 [36853,                 - id
-"straight-quick-jerk",  - name
+"straight-quick-jerk",  - url tag (eg. faproulette.co/123/url-tag)
 0,                      - max dice index (0=0-9, 1=1-6)
-4,                      - dice num
-0,                      -
+4,                      - total numbers
+0,                      - special rolls (0 = none, 1 = contains dubs, trips, etc.)
 "36853",                - filename
 0,                      - file extention (0=jpg, 1=gif, 2=png, 3=webp)
-1,                      -
-3,                      -
-400,                    -
-534,                    -
-"",                     -
-"",                     -
-""                      -
+1,                      - roulette status (0 = hidden, 1 = public, usually always 1)
+3,                      - thumbnail extension
+400,                    - thumbnail width
+534,                    - thumbnail height
+"",                     - if excluded due to filters, shows exclusion category
+"",                     - rejection reason (unused for public)
+""                      - collection note (unused for public)
 ]

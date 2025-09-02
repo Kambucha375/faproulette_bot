@@ -1,4 +1,5 @@
 import os
+import random
 import json
 from io import BytesIO
 from PIL import Image
@@ -15,7 +16,7 @@ from aiogram.types import FSInputFile, URLInputFile, CallbackQuery
 from aiogram.exceptions import TelegramNetworkError
 
 from dotenv import load_dotenv
-from keyboards import keyboards, Commands, CommandCallback, NumberCallback
+from keyboards import Commands, CommandCallback, NumberCallback, RollCallback, keyboards, make_roll_keyboard
 
 load_dotenv("API_KEYS.env")
 
@@ -31,6 +32,11 @@ ext_map = {
     GIF: "gif",
     PNG: "png",
     WEBP: "webp"
+}
+
+dice_types = {
+    0 : (0, 9),
+    1 : (1, 6)
 }
 
 bot = Bot(token=API_TOKEN)
@@ -91,18 +97,19 @@ def get_valid_image(response_bytes, file_path):
 
     return is_pdf
 
-async def safe_send_photo(chat_id, file, caption=None, retries=3):
+async def safe_send_photo(chat_id, file, caption=None, retries=3, reply_markup=None):
     for i in range(retries):
         try:
-            await bot.send_photo(chat_id, file, caption=caption)
+            message = await bot.send_photo(chat_id, file, caption=caption, reply_markup=reply_markup)
             break
         except TelegramNetworkError:
             if i < retries - 1:
                 print(f"retrie {i}")
                 await asyncio.sleep(2)
             else:
-                bot.send_message(chat_id, "Failed to send photo")
+                message = await bot.send_message(chat_id, "Failed to send photo")
                 raise
+    return message
 
 async def cmd_start(message: types.Message):
     await message.answer("Avalible commands /random, /search", reply_markup=keyboards["start_keyboard"])
@@ -112,9 +119,18 @@ async def cmd_random(message: types.Message):
     roulette_data, filename = await get_random_roulette()
     file = FSInputFile(filename)
     if roulette_data["image_type"] == GIF:
-        await bot.send_animation(message.chat.id, file, caption=roulette_data["name"])
+        sent_message = await bot.send_animation(
+            message.chat.id, 
+            file, 
+            caption=roulette_data["name"], 
+            )
     else:
-        await safe_send_photo(message.chat.id, file, caption=roulette_data["name"])
+        sent_message = await safe_send_photo(
+            message.chat.id, 
+            file, 
+            caption=roulette_data["name"], 
+            )
+    await roll_dices(sent_message, roulette_data["numbers"], roulette_data["dice"], reply_markup=make_roll_keyboard(roulette_data["numbers"], roulette_data["dice"]))
 
 
 async def cmd_search(message: types.Message, state: FSMContext):
@@ -177,13 +193,27 @@ async def process_roulette_num(message: types.Message, state: FSMContext):
         if is_pdf:
             await message.answer("The image is too big for telegram, will be sent as pdf")
             file = FSInputFile(file_path)
-            await bot.send_document(message.chat.id, document=file, caption=roulette[1])
+            sent_message = await bot.send_document(
+                message.chat.id, 
+                document=file, 
+                caption=roulette[1],
+                )
         else:
             file = FSInputFile(file_path)
             if file_type == GIF:
-                await bot.send_animation(message.chat.id, file, caption=roulette[1])
+                sent_message = await bot.send_animation(
+                    message.chat.id, 
+                    file, 
+                    caption=roulette[1],
+                    )
             else:
-                await safe_send_photo(message.chat.id, file, caption=roulette[1])
+                sent_message = await safe_send_photo(
+                    message.chat.id, 
+                    file, 
+                    caption=roulette[1],
+                    )
+        
+        await roll_dices(sent_message, roulette[3], roulette[2], make_roll_keyboard(roulette[3], roulette[2]))
 
         counted_roulettes.append(roulette)
 
@@ -198,6 +228,28 @@ async def get_command_function(command: Commands, message: types.Message, state:
         return await cmd_random(message)
     elif command == Commands.search:
         return await cmd_search(message, state)
+    
+
+async def roll_dices(message: types.Message, number_of_dices: int, dice_type: int, reply_markup):
+    letters = [chr(ord('Z') - i) for i in range(26)]
+    number_range = dice_types.get(dice_type)
+
+    for j in range(10):
+        numbers_str = []
+
+        for i in range(number_of_dices):
+            if i >= len(letters):
+                break
+            
+            rand_num = random.randint(number_range[0], number_range[1])
+            numbers_str.insert(0, f"{letters[i]}:{rand_num}  ")
+            
+            if (i + 1) % 7 == 0:
+                numbers_str.insert(0, "\n")
+        
+        await bot.edit_message_caption(chat_id=message.chat.id, message_id=message.message_id, caption=' '.join(numbers_str), reply_markup=reply_markup)
+        await asyncio.sleep(0.1)
+
 
 @router.callback_query(NumberCallback.filter())
 async def process_number(query: CallbackQuery, callback_data: NumberCallback, state: FSMContext):
@@ -212,7 +264,9 @@ async def process_number(query: CallbackQuery, callback_data: NumberCallback, st
 async def raise_command(query: CallbackQuery, callback_data: CommandCallback, state: FSMContext):
     await get_command_function(callback_data.command, query.message, state)
     
-    
+@router.callback_query(RollCallback.filter())    
+async def roll(query: CallbackQuery, callback_data: RollCallback, state: FSMContext):
+    await roll_dices(query.message, callback_data.dice_num, callback_data.dice_type, query.message.reply_markup)
 
 router.message.register(cmd_start, Command(commands=[Commands.start, Commands.menu]))
 router.message.register(cmd_random, Command(Commands.random))
@@ -223,6 +277,8 @@ router.message.register(process_roulette_num, StateFilter(UserStates.roulette_nu
 
 
 dp.include_router(router)
+
+
 
 async def main():
     print("~"*40)

@@ -1,4 +1,5 @@
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 from enum import Enum
 from aiogram.filters.callback_data import CallbackData
 
@@ -14,6 +15,11 @@ class CommandCallback(CallbackData, prefix="com"):
 class NumberCallback(CallbackData, prefix="num"):
     target: str
     num: int
+
+class RollCallback(CallbackData, prefix="roll"):
+    dice: int
+    dice_num: int
+    dice_type: int
 
 
 start_keyboard = InlineKeyboardMarkup(
@@ -35,6 +41,24 @@ search_num_keyboard = InlineKeyboardMarkup(
     ]
 )
 
+
 keyboards = {"start_keyboard" : start_keyboard,
              "search_num_keyboard" : search_num_keyboard,
              }
+
+
+def make_roll_keyboard(dice_num: int, dice_type: int):
+    builder = InlineKeyboardBuilder()
+    letters = [chr(ord('Z') - i) for i in range(26)]
+
+    builder.button(
+        text="reroll all",
+        callback_data=RollCallback(dice=-1, dice_num=dice_num, dice_type=dice_type).pack()
+    )
+    for i in range(dice_num):
+        builder.button(
+            text=f"reroll {letters[i]}",
+            callback_data=RollCallback(dice=i, dice_num=dice_num, dice_type=dice_type).pack()
+        )
+
+    return builder.as_markup()
